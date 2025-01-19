@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, websockets
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
@@ -29,5 +29,12 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: websockets):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"You sent: {data}")
 
  
