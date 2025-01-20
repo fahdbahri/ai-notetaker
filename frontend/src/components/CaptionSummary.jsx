@@ -3,6 +3,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 export function CaptionsAndSummary({ currentCaption }) {
+  console.log("Rendering CaptionsAndSummary with caption:", currentCaption); // Debug log
+  
   return (
     <Tabs defaultValue="captions">
       <TabsList>
@@ -13,15 +15,10 @@ export function CaptionsAndSummary({ currentCaption }) {
         <Card>
           <CardContent className="p-4">
             <ScrollArea className="h-64">
-              <p>{currentCaption}</p>
+              <p className="whitespace-pre-wrap">
+                {currentCaption || "Waiting for transcription..."}
+              </p>
             </ScrollArea>
-          </CardContent>
-        </Card>
-      </TabsContent>
-      <TabsContent value="summary">
-        <Card>
-          <CardContent className="p-4">
-            <p>Summary will be generated after the recording is complete.</p>
           </CardContent>
         </Card>
       </TabsContent>
