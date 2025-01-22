@@ -1,77 +1,66 @@
 import { Button } from "@/components/ui/button";
 import { Mic, StopCircle } from "lucide-react";
 import React, { useState, useEffect, useCallback } from "react";
-import { io } from "socket.io-client";
 
-export function RecordButton({ isRecording, onClick, onTranscription }) {
-  const [socket, setSocket] = useState(null);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
 
-  // Configure socket connection
-  const newSocket = io("http://localhost:8000", {
-    transports: ['websocket', 'polling'],
-    cors: {
-      origin: "http://localhost:5173",
-      credentials: true
-    }
-  });
 
-  useEffect(() => {
-    newSocket.on("connect", () => {
-      console.log("Connected to server");
-    });
+export function RecordButton({ onTranscriptionUpdate }){
 
-    newSocket.on("transcription", (transcription) => {
-      console.log("Received transcription:", transcription);
-      if (onTranscription && typeof onTranscription === 'function') {
-        onTranscription(transcription);
+  const [isRecording, setIsRecording] = useState(false);
+  const [fullTranscript, setFullTranscript] = useState("");
+  const [recognition, setRecognition] = useState(null);
+
+
+  function onStart(){
+    setIsRecording(true);
+    const SpeachRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const newRecognition = new SpeachRecognition();
+
+    newRecognition.intermResults = true;
+    newRecognition.continuous = true;
+
+
+    newRecognition.onresult = async function(event) { 
+
+
+      const finalTranscripts = Array.from(event.results)
+      .filter(result => result.isFinal) 
+      .map(result => result[0].transcript) 
+  
+  
+    // If there are final transcripts, update the full transcript
+  
+    if (finalTranscripts.length > 0) {
+  
+      const updatedTranscript = fullTranscript + finalTranscripts.join(" ") + " "; 
+  
+      setFullTranscript(updatedTranscript); 
+  
+      onTranscriptionUpdate(updatedTranscript); 
       }
-    });
 
-    newSocket.on("disconnect", () => {
-      console.log("Disconnected from server");
-    });
+     
+    }
 
-    newSocket.on("error", (error) => {
-      console.error("Socket error:", error);
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.close();
+    newRecognition.onerror = function(event)
+    {
+      console.log("Speach recognition error detected: " + event.error);
     };
-  }, []);
 
-  const onStart = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && socket) {
-          event.data.arrayBuffer().then(buffer => {
-            const float32Array = new Float32Array(buffer);
-            socket.emit("audio", float32Array);
-          });
-        }
-      };
+    newRecognition.start();
+    setRecognition(newRecognition)
+ 
 
-      recorder.start(1000);
-      setMediaRecorder(recorder);
-      onClick();  // Call the parent's onClick handler
-    } catch (error) {
-      console.error("Error starting recording:", error);
-    }
-  };
+  }
+  function onStop(){
 
-  const onStop = () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-      mediaRecorder.stream.getTracks().forEach(track => track.stop());
-      onClick();  // Call the parent's onClick handler
-    }
-  };
+    if(recognition)
+    {
+      recognition.stop();
+      setIsRecording(false);
+    }  
+
+  }
 
   return (
     <Button

@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 export function CaptionsAndSummary({ currentCaption }) {
-  console.log("Rendering CaptionsAndSummary with caption:", currentCaption); // Debug log
+  console.log("Rendering CaptionsAndSummary with caption:")
   
   return (
     <Tabs defaultValue="captions">
@@ -16,7 +16,18 @@ export function CaptionsAndSummary({ currentCaption }) {
           <CardContent className="p-4">
             <ScrollArea className="h-64">
               <p className="whitespace-pre-wrap">
-                {currentCaption || "Waiting for transcription..."}
+                { currentCaption || "Waiting for transcription..."}
+              </p>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </TabsContent>
+       <TabsContent value="summary">
+        <Card>
+          <CardContent className="p-4">
+            <ScrollArea className="h-64">
+              <p className="whitespace-pre-wrap">
+                {"Summary..."}
               </p>
             </ScrollArea>
           </CardContent>
