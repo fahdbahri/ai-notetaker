@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-export function CaptionsAndSummary({ currentCaption }) {
+export function CaptionsAndSummary({ currentCaption, summary }) {
   console.log("Rendering CaptionsAndSummary with caption:")
   
   return (
@@ -27,7 +27,7 @@ export function CaptionsAndSummary({ currentCaption }) {
           <CardContent className="p-4">
             <ScrollArea className="h-64">
               <p className="whitespace-pre-wrap">
-                {"Summary..."}
+                {summary || "No summary generated yet..."}
               </p>
             </ScrollArea>
           </CardContent>
