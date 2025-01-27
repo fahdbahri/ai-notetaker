@@ -1,59 +1,135 @@
-from fastapi import FastAPI
 import os
-from dotenv import load_dotenv
+import asyncio
+import queue
+import threading
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.chains.summarize import load_summarize_chain
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import socketio
+from google.cloud import speech
+from settings import *
 
+# Google Cloud Speech-to-Text client
+speech_client = speech.SpeechClient()
 
-
-load_dotenv()
-
+# FastAPI app
 app = FastAPI()
 
-# CORS configuration
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins (adjust for production)
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-class TranscriptRequest(BaseModel):
-    transcript: str
+# Socket.IO server
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[])
+socket_app = socketio.ASGIApp(sio, app)
 
-@app.post("/summarize")
-async def summarize_transcript(request: TranscriptRequest):
-    # Initialize the language model
-    llm = ChatOpenAI(
-        model="gpt-3.5-turbo", 
-        temperature=0.3, 
-        max_tokens=1000
-    )
+# Store client data
+clients = {}
 
-    # Split the transcript into chunks if it's too long
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=4000, 
-        chunk_overlap=200
-    )
-    texts = text_splitter.split_text(request.transcript)
 
-    # Create a summarization chain
-    chain = load_summarize_chain(
-        llm, 
-        chain_type="map_reduce", 
-        verbose=True
-    )
+class ClientData:
+    def __init__(self, sid, conn, config):
+        self.sid = sid
+        self.conn = conn
+        self.audio_queue = queue.Queue()
+        self.transcription_thread = None
+        self.is_recording = False
+        self.config = config
 
-    # Generate summary
-    summary = chain.run(texts)
+    def start_transcription(self):
+        self.is_recording = True
+        self.transcription_thread = threading.Thread(
+            target=self.transcribe_audio)
+        self.transcription_thread.start()
 
-    return {"summary": summary}
+    def stop_transcription(self):
+        self.is_recording = False
+        self.audio_queue.put(None)  # Signal the thread to stop
+        if self.transcription_thread:
+            self.transcription_thread.join()
 
+    def transcribe_audio(self):
+        # Google Cloud Speech-to-Text streaming configuration
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=self.config["audio"]["sampleRateHertz"],
+            language_code=self.config["audio"]["languageCode"],
+            enable_automatic_punctuation=True,
+        )
+        streaming_config = speech.StreamingRecognitionConfig(
+            config=config, interim_results=self.config["interimResults"]
+        )
+
+        # Audio generator
+        def audio_generator():
+            while self.is_recording:
+                chunk = self.audio_queue.get()
+                if chunk is None:
+                    break
+                yield speech.StreamingRecognizeRequest(audio_content=chunk)
+
+        # Start streaming
+        requests = audio_generator()
+        responses = speech_client.streaming_recognize(
+            streaming_config, requests)
+
+        # Process responses
+        for response in responses:
+            if not response.results:
+                continue
+            result = response.results[0]
+            if not result.alternatives:
+                continue
+            transcript = result.alternatives[0].transcript
+            is_final = result.is_final
+
+            # Send transcription back to the client
+            asyncio.run(self.conn.emit("speechData", {
+                        "data": transcript, "isFinal": is_final}))
+
+    def add_audio_data(self, data):
+        self.audio_queue.put(data)
+
+# Socket.IO event handlers
+
+
+@sio.on("connect")
+async def connect(sid, environ):
+    print(f"Client connected: {sid}")
+
+
+@sio.on("disconnect")
+async def disconnect(sid):
+    print(f"Client disconnected: {sid}")
+    if sid in clients:
+        clients[sid].stop_transcription()
+        del clients[sid]
+
+
+@sio.on("startGoogleCloudStream")
+async def start_stream(sid, config):
+    print(f"Starting transcription for client: {sid}")
+    clients[sid] = ClientData(sid, sio, config)
+    clients[sid].start_transcription()
+
+
+@sio.on("binaryAudioData")
+async def receive_audio_data(sid, data):
+    if sid in clients:
+        clients[sid].add_audio_data(data)
+
+
+@sio.on("endGoogleCloudStream")
+async def end_stream(sid):
+    print(f"Stopping transcription for client: {sid}")
+    if sid in clients:
+        clients[sid].stop_transcription()
+
+# Run the app
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(socket_app, host="0.0.0.0", port=10000)
