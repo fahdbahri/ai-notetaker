@@ -1,52 +1,54 @@
 import { Button } from "@/components/ui/button";
 import { Mic, StopCircle } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import speechToTextUtils from "../TranscribeUtilities";
 
 export function RecordButton({ onTranscriptionUpdate, onSummaryUpdate, onTabChange }) {
   const [isRecording, setIsRecording] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
-  const [interimTranscribedData, setInterimTranscribedData] = useState('');
+  const [selectedLanguage, setSelectedLanguage] = useState("en-US");
+  const [interimTranscribedData, setInterimTranscribedData] = useState("");
   const [completeTranscript, setCompleteTranscript] = useState([]);
-  
 
   function handleDataReceived(data, isFinal) {
     if (isFinal) {
-      setInterimTranscribedData('');
-      onTranscriptionUpdate(oldData => [...oldData, data]); // Pass final transcription to parent
+      setInterimTranscribedData("");
+      setCompleteTranscript((oldTranscript) => [...oldTranscript, data]); // Add final transcription to complete transcript
+      onTranscriptionUpdate((oldData) => [...oldData, data]); // Pass final transcription to parent
     } else {
       setInterimTranscribedData(data);
     }
-  };
+  }
 
   function getTranscriptionConfig() {
     return {
       audio: {
-        encoding: 'LINEAR16',
+        encoding: "LINEAR16",
         sampleRateHertz: 16000,
         languageCode: selectedLanguage,
       },
       interimResults: true,
     };
-  };
+  }
 
   function getFullTranscription() {
-    return completeTranscript.join(' '); // Join the complete transcript
-  };
+    return completeTranscript.join(" "); // Join the complete transcript
+  }
 
   const handleSummarize = async () => {
     try {
-      onTabChange('summary');
+      onTabChange("summary");
       const fullText = getFullTranscription();
 
-      const response = await fetch('http://0.0.0.0:10000/summary', {
-        method: 'POST',
+      console.log("Full summarization", fullText);
+
+      const response = await fetch("http://0.0.0.0:10000/summary", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: fullText
-        })
+          text: fullText,
+        }),
       });
 
       if (!response.ok) {
@@ -54,19 +56,21 @@ export function RecordButton({ onTranscriptionUpdate, onSummaryUpdate, onTabChan
       }
 
       const summaryData = await response.json();
+      console.log("Summary Data Received", summaryData);
 
-      console.log("Summary Data Received:", summaryData);
+      const summary =
+        summaryData.summary || // Direct summary
+        (summaryData.can_summarize
+          ? summaryData.message
+          : "No summary available");
 
-      if (summaryData && summaryData.summary) {
-
-        onSummaryUpdate(summaryData.summary);
+      if (typeof summary === "string" && summary.trim()) {
+        onSummaryUpdate(summary);
       } else {
-        console.log("No summary generated. ")
+        console.warn("Received invalid summary:", summaryData);
       }
-
-      onSummaryUpdate(summaryData);
     } catch (error) {
-      console.log('Error generating a summary: ', error);
+      console.log("Error generating a summary: ", error);
     }
   };
 
@@ -76,26 +80,27 @@ export function RecordButton({ onTranscriptionUpdate, onSummaryUpdate, onTabChan
       getTranscriptionConfig(),
       handleDataReceived,
       (error) => {
-        console.error('Error when transcribing', error);
+        console.error("Error when transcribing", error);
       }
     );
-  };
+  }
 
   function onStop() {
     setIsRecording(false);
     speechToTextUtils.stopRecording();
 
+    // Add the interim transcribed data to the complete transcript
     if (interimTranscribedData) {
-      setCompleteTranscript(oldTranscript => [...oldTranscript, interimTranscribedData]);
+      setCompleteTranscript((oldTranscript) => [...oldTranscript, interimTranscribedData]);
+      setInterimTranscribedData(""); // Clear the interim data after adding it to the complete transcript
     }
-  };
+  }
 
   return (
     <div className="flex space-x-4 items-center">
       <Button
         onClick={isRecording ? onStop : onStart}
         variant={isRecording ? "destructive" : "default"}
-        
       >
         {isRecording ? (
           <StopCircle className="mr-2 h-4 w-4" />
@@ -105,9 +110,7 @@ export function RecordButton({ onTranscriptionUpdate, onSummaryUpdate, onTabChan
         {isRecording ? "Stop Recording" : "Start Recording"}
       </Button>
 
-      <Button onClick={handleSummarize}>
-       Summarize
-      </Button>
+      <Button onClick={handleSummarize}>Summarize</Button>
     </div>
   );
 }
