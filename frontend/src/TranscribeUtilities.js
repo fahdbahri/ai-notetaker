@@ -50,7 +50,7 @@ let AudioStreamer = {
 
     socket.on('googleCloudStreamError', (error) => {
       if (onError) {
-        onError('error');
+        onError('error: ', error);
       }
       closeAll();
     });
