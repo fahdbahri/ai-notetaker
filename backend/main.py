@@ -1,12 +1,24 @@
 import os
+from dotenv import load_dotenv
 import asyncio
+from pydantic import BaseModel
+from typing import Optional
 import queue
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
 from google.cloud import speech
 from settings import *
+
+load_dotenv()
+
+from transformers import pipeline
+
+
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+
+
 
 # Google Cloud Speech-to-Text client
 speech_client = speech.SpeechClient()
@@ -14,10 +26,15 @@ speech_client = speech.SpeechClient()
 # FastAPI app
 app = FastAPI()
 
+origins = [
+    "http://localhost:5173",
+    "localhost:5173"
+]
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (adjust for production)
+    allow_origins=origins,  # Allow all origins (adjust for production)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,6 +47,8 @@ socket_app = socketio.ASGIApp(sio, app)
 # Store client data
 clients = {}
 
+class TranscriptRequest(BaseModel):
+    text: str
 
 class ClientData:
     def __init__(self, sid, conn, config):
@@ -128,6 +147,62 @@ async def end_stream(sid):
     print(f"Stopping transcription for client: {sid}")
     if sid in clients:
         clients[sid].stop_transcription()
+
+def create_note_taking_prompt(text):
+    return f"""Summarize the following text into concise bullet-point notes. Focus on:
+1. Main topic and key themes
+2. Important points and arguments
+3. Examples or evidence provided
+4. Technical details (if any)
+5. Challenges or limitations
+6. Conclusions or takeaways
+
+Text:
+{text}
+
+Notes:"""
+
+@app.post("/summary")
+async def summarize(request: TranscriptRequest):
+    try:
+        # Basic validation
+        if len(request.text.strip()) < 50:  # Very minimal length check
+            return {
+                "status": "too_short",
+                "message": "The transcription is too short to summarize.",
+                "summary": "Transcription is too short to generate a summary.",
+                "can_summarize": False
+            }
+
+        # Initialize language model
+
+        prompt = create_note_taking_prompt(request.text)
+       
+        summary_result = summarizer(prompt, max_length=250, min_length=50, do_sample=False)
+
+        summary = summary_result[0]['summary_text']
+        # Generate summary directly
+        print("summary created")
+
+        return {
+            "status": "success",
+            "summary": summary,
+            "message": summary,
+            "can_summarize": True
+        }
+
+    except Exception as e:
+        return {
+
+            "status": "error",
+            "message": str(e),
+            "summary": "An error occurred while generating the summary.",
+            "can_summarize": False
+        }
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 # Run the app
 if __name__ == "__main__":
