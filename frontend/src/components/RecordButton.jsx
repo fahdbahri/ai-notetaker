@@ -1,80 +1,101 @@
 import { Button } from "@/components/ui/button";
 import { Mic, StopCircle } from "lucide-react";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
+import speechToTextUtils from "../TranscribeUtilities";
 
-export function RecordButton({ onTranscriptionUpdate }) {
+export function RecordButton({ onTranscriptionUpdate, onSummaryUpdate, onTabChange }) {
   const [isRecording, setIsRecording] = useState(false);
-  const [fullTranscript, setFullTranscript] = useState("");
-  const [recognition, setRecognition] = useState(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
+  const [interimTranscribedData, setInterimTranscribedData] = useState('');
+  const [completeTranscript, setCompleteTranscript] = useState([]);
+  
+
+  function handleDataReceived(data, isFinal) {
+    if (isFinal) {
+      setInterimTranscribedData('');
+      onTranscriptionUpdate(oldData => [...oldData, data]); // Pass final transcription to parent
+    } else {
+      setInterimTranscribedData(data);
+    }
+  };
+
+  function getTranscriptionConfig() {
+    return {
+      audio: {
+        encoding: 'LINEAR16',
+        sampleRateHertz: 16000,
+        languageCode: selectedLanguage,
+      },
+      interimResults: true,
+    };
+  };
+
+  function getFullTranscription() {
+    return completeTranscript.join(' '); // Join the complete transcript
+  };
+
+  const handleSummarize = async () => {
+    try {
+      onTabChange('summary');
+      const fullText = getFullTranscription();
+
+      const response = await fetch('http://0.0.0.0:10000/summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: fullText
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const summaryData = await response.json();
+
+      console.log("Summary Data Received:", summaryData);
+
+      if (summaryData && summaryData.summary) {
+
+        onSummaryUpdate(summaryData.summary);
+      } else {
+        console.log("No summary generated. ")
+      }
+
+      onSummaryUpdate(summaryData);
+    } catch (error) {
+      console.log('Error generating a summary: ', error);
+    }
+  };
 
   function onStart() {
     setIsRecording(true);
-    const SpeachRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    const newRecognition = new SpeachRecognition();
-
-    newRecognition.intermResults = true;
-    newRecognition.continuous = true;
-
-    newRecognition.onresult = async function (event) {
-      const finalTranscripts = Array.from(event.results)
-        .filter((result) => result.isFinal)
-        .map((result) => result[0].transcript);
-
-      // If there are final transcripts, update the full transcript
-
-      if (finalTranscripts.length > 0) {
-        const updatedTranscript =
-          fullTranscript + finalTranscripts.join(" ") + " ";
-
-        setFullTranscript(updatedTranscript);
-
-        onTranscriptionUpdate(updatedTranscript);
+    speechToTextUtils.initRecording(
+      getTranscriptionConfig(),
+      handleDataReceived,
+      (error) => {
+        console.error('Error when transcribing', error);
       }
-    };
+    );
+  };
 
-    newRecognition.onerror = function (event) {
-      console.log("Speach recognition error detected: " + event.error);
-    };
-
-    newRecognition.start();
-    setRecognition(newRecognition);
-  }
   function onStop() {
-    if (recognition) {
-      recognition.stop();
-      setIsRecording(false);
+    setIsRecording(false);
+    speechToTextUtils.stopRecording();
+
+    if (interimTranscribedData) {
+      setCompleteTranscript(oldTranscript => [...oldTranscript, interimTranscribedData]);
     }
-  }
-
-  async function summarizeLecture(){
-    try {
-      const response = await fetch("http://localhost:8000/summarize", {
-        method: "POST",
-        headers: {
-          "content-Type": "application/json",
-        },
-        body: JSON.stringify({transcript: fullTranscript}),
-      });
-
-      if (!response.ok){
-        console.log("Network response was not OK")
-
-      }
-
-      const data = await response.json();
-      setSummary(data.summary);
-
-    } catch (error) {
-      console.error("Error summarizing lecture:", error);
-    }
-  }
+  };
 
   return (
-    <>
+    <div className="flex space-x-4 items-center">
       <Button
         onClick={isRecording ? onStop : onStart}
         variant={isRecording ? "destructive" : "default"}
+        
       >
         {isRecording ? (
           <StopCircle className="mr-2 h-4 w-4" />
@@ -83,7 +104,10 @@ export function RecordButton({ onTranscriptionUpdate }) {
         )}
         {isRecording ? "Stop Recording" : "Start Recording"}
       </Button>
-      <Button onClick={summarizeLecture}>Summarize Lecture</Button>
-    </>
+
+      <Button onClick={handleSummarize}>
+       Summarize
+      </Button>
+    </div>
   );
 }

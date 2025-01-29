@@ -2,11 +2,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-export function CaptionsAndSummary({ currentCaption, summary }) {
+export function CaptionsAndSummary({ currentCaption, summary, activeTab, onTabChange}) {
   console.log("Rendering CaptionsAndSummary with caption:")
   
   return (
-    <Tabs defaultValue="captions">
+    <Tabs value={activeTab} onValueChange={onTabChange}>
       <TabsList>
         <TabsTrigger value="captions">Live Captions</TabsTrigger>
         <TabsTrigger value="summary">Summary</TabsTrigger>
@@ -36,4 +36,3 @@ export function CaptionsAndSummary({ currentCaption, summary }) {
     </Tabs>
   )
 }
-
