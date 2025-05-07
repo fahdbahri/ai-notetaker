@@ -171,4 +171,4 @@ cython_debug/
 .pypirc
 
 # Paths
-LLM-notetaker/backend/settings.py
+src/backend/settings.py
