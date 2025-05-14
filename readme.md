@@ -21,9 +21,7 @@ A real-time speech-to-text transcription and summarization tool that converts sp
 ## Tech Stack
 
 ### Frontend
-- React 18
-- Vite
-- Tailwind CSS
+- React
 - Socket.IO client
 - Web Audio API
 
